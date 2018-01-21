@@ -118,7 +118,7 @@ ARCHIVES = ("https://www.classes.cs.uchicago.edu/archive/2015/winter"
 LEN_ARCHIVES = len(ARCHIVES)
 
 
-def is_url_ok_to_follow(url, limiting_domain):
+def is_url_ok_to_follow(url, limiting_domain, limiting_path = None):
     '''
     Inputs:
         url: absolute URL
@@ -137,14 +137,30 @@ def is_url_ok_to_follow(url, limiting_domain):
         is_url_ok_to_follow("http://cs.cornell.edu/pa/pa1", "cs.uchicago.edu")
             yields False
     '''
+    
+    if url_checks(url):
 
+        if is_outside_domain(url, limiting_domain):
+            return False
+
+        if limiting_path not in url:
+            # path = parsed_url.path
+            # ld = len(limiting_path)
+            # trunc_path = path[:-(ld-1)]
+            # print(trunc_path)
+            # if trunc_path != limiting_path:
+            return False
+
+        # does it have the right extension
+        parsed_url = urllib.parse.urlparse(url)
+        (filename, ext) = os.path.splitext(parsed_url.path)
+        return (ext == "" or ext == ".html")
+
+def url_checks(url):
     if "mailto:" in url:
         return False
 
     if "@" in url:
-        return False
-
-    if url[:LEN_ARCHIVES] == ARCHIVES:
         return False
 
     parsed_url = urllib.parse.urlparse(url)
@@ -160,41 +176,19 @@ def is_url_ok_to_follow(url, limiting_domain):
     if parsed_url.query != "":
         return False
 
-    loc = parsed_url.netloc
-    ld = len(limiting_domain)
-    trunc_loc = loc[-(ld+1):]
-    if not (limiting_domain == loc or (trunc_loc == "." + limiting_domain)):
-        return False
-
-    # does it have the right extension
-    (filename, ext) = os.path.splitext(parsed_url.path)
-    return (ext == "" or ext == ".html")
+    return True
 
 
-def is_subsequence(tag):
-    '''
-    Does the tag represent a subsequence?
-    '''
-    return isinstance(tag, bs4.element.Tag) and 'class' in tag.attrs \
-        and tag['class'] == ['courseblock', 'subsequence']
+def is_outside_domain(url, limiting_domain, return_ = False):
+    if url_checks(url):
+        parsed_url = urllib.parse.urlparse(url)
+        loc = parsed_url.netloc
+        ld = len(limiting_domain)
+        trunc_loc = loc[-(ld+1):]
+        if not return_:
+            if not (limiting_domain == loc or (trunc_loc == "." + limiting_domain)):
+                return True
+        else:
+            if not (limiting_domain == loc or (trunc_loc == "." + limiting_domain)):
+                return url
 
-
-def is_whitespace(tag):
-    '''
-    Does the tag represent whitespace?
-    '''
-    return isinstance(tag, bs4.element.NavigableString) and (tag.strip() == "")
-
-
-def find_sequence(tag):
-    '''
-    If tag is the header for a sequence, then
-    find the tags for the courses in the sequence.
-    '''
-    rv = []
-    sib_tag = tag.next_sibling
-    while is_subsequence(sib_tag) or is_whitespace(tag):
-        if not is_whitespace(tag):
-            rv.append(sib_tag)
-        sib_tag = sib_tag.next_sibling
-    return rv

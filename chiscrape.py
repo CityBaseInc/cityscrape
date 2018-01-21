@@ -3,196 +3,137 @@ import requests
 import os
 import bs4
 import queue
-
-
-link_queue = queue.Queue()
-
-def get_soup(url):
-	req = requests.get(url)
-	html = req.text.encode('utf8')
-	soup = bs4.BeautifulSoup(html, 'lxml')
-	return soup
-
-def get_body_anchors(soup):
-	anchor_tags = soup.find_all('div',
-        class_='col-sm-12 col-md-9 page-center')[0].find_all('a')
-	return anchor_tags
+import util
+import time
 
 
 
-url = 'https://www.cityofchicago.org/city/en.html'
-
-req = requests.get(url)
-
-html = req.text.encode('iso-8859-1')
-
-soup = bs4.BeautifulSoup(html, 'lxml')
-
-
-
-
-
-
-
-def convert_if_relative_url(current_url, new_url):
+def url_to_soup(url):
     '''
-    Attempt to determine whether new_url is a relative URL and if so,
-    use current_url to determine the path and create a new absolute
-    URL.  Will add the protocol, if that is all that is missing.
+    Takes a url and returns a BeautifulSoup object.
 
-    Inputs:
-        current_url: absolute URL
-        new_url:
+    Input:
+        - url (string) the url for which html will be stored
 
-    Outputs:
-        new absolute URL or None, if cannot determine that
-        new_url is a relative URL.
-
-    Examples:
-        convert_if_relative_url("http://cs.uchicago.edu", "pa/pa1.html") yields
-            'http://cs.uchicago.edu/pa/pa.html'
-
-        convert_if_relative_url("http://cs.uchicago.edu", "foo.edu/pa.html")
-            yields 'http://foo.edu/pa.html'
+    Returns: soup (bs4 object) the html soup
     '''
-    if new_url == "" or not is_absolute_url(current_url):
-        return None
+    request = util.get_request(url)
+    html = util.read_request(request)
+    soup = bs4.BeautifulSoup(html, 'html5lib')
+    return soup
 
-    if is_absolute_url(new_url):
-        return new_url
-
-    parsed_url = urllib.parse.urlparse(new_url)
-    path_parts = parsed_url.path.split("/")
-
-    if len(path_parts) == 0:
-        return None
-
-    ext = path_parts[0][-4:]
-    if ext in [".edu", ".org", ".com", ".net"]:
-        return "http://" + new_url
-    elif new_url[:3] == "www":
-        return "http://" + new_path
-    else:
-        return urllib.parse.urljoin(current_url, new_url)
-
-
-
-def get_request(url):
+def get_urls(soup, class_ = None):
     '''
-    Open a connection to the specified URL and if successful
-    read the data.
+    Takes an html page's soup and returns all anchor links on the page.
 
-    Inputs:
-        url: must be an absolute URL
+    Input:
+        - soup (bs4 object) the page to be scraped
 
-    Outputs:
-        request object or None
-
-    Examples:
-        get_request("http://www.cs.uchicago.edu")
+    Returns: urls (list of strings) all url strings on the page
     '''
+    if class_:
+        soup = soup.find_all('div', 
+                    class_ = class_)[0]
 
-    if is_absolute_url(url):
+    url_soup = soup.find_all('a')
+    urls = []
+    for url in url_soup:
         try:
-            r = requests.get(url)
-            if r.status_code == 404 or r.status_code == 403:
-                r = None
-        except Exception:
-            # fail on any kind of error
-            r = None
-    else:
-        r = None
+            urls.append(url['href'])
+        except:
+            continue
 
-    return r
+    return urls
 
 
-def read_request(request):
+def clean_and_queue_urls(soup, current_url, limiting_domain, 
+    outside_domain, queue, url_tracker, limiting_path = None, 
+                                                class_ = None):
     '''
-    Return data from request object.  Returns result or "" if the read
-    fails..
-    '''
+    Takes a list of urls from the current page being visited and adds 
+    them to the queue of urls to be visited by the scraper if they 
+    have not been visited already.
 
-    try:
-        return request.text.encode('iso-8859-1')
-    except Exception:
-        print("read failed: " + request.url)
-        return ""
-
-
-def get_request_url(request):
-    '''
-    Extract true URL from the request
-    '''
-    return request.url
-
-
-def is_absolute_url(url):
-    '''
-    Is url an absolute URL?
-    '''
-    if url == "":
-        return False
-    return urllib.parse.urlparse(url).netloc != ""
-
-
-def remove_fragment(url):
-    '''remove the fragment from a url'''
-
-    (url, frag) = urllib.parse.urldefrag(url)
-    return url
-
-def is_url_ok_to_follow(url, limiting_domain):
-    '''
     Inputs:
-        url: absolute URL
-        limiting domain: domain name
+        - urls: (list of strings) list of urls from the current page.
+        - current_url: (string) url of the page currently being visited.
+        - limiting_domain: (string) domain to filter out urls not belonging
+        to the same domain.
+        - queue: (Queue object) queue holding urls to visit in first-in-first
+        out order.
+        - url_tracker: (list of strings) list of urls that have been visited.
+
+    Returns: None - the function will add to the any url not visited before.
+    '''
+    urls = get_urls(soup, class_)
+    for url in urls:
+        url = util.remove_fragment(url)
+        if url == '':
+            continue
+        if not util.is_absolute_url(url):
+            url = util.convert_if_relative_url(current_url, url)
+        if util.is_outside_domain(url, limiting_domain, return_ = True):
+            outside_domain.append((current_url,url))
+        if util.is_url_ok_to_follow(url, limiting_domain, limiting_path):
+            if url not in queue.queue:
+                if url not in url_tracker:
+                    queue.put(url)
+
+
+def go(num_pages_to_crawl):
+    '''
+    Crawl the college catalog and generates a CSV file with an index.
+
+    Inputs:
+        num_pages_to_crawl: the number of pages to process during the crawl
+        course_map_filename: the name of a JSON file that contains the mapping
+          course codes to course identifiers
+        index_filename: the name for the CSV of the index.
 
     Outputs:
-        Returns True if the protocol for the URL is HTTP, the domain
-        is in the limiting domain, and the path is either a directory
-        or a file that has no extension or ends in .html. URLs
-        that include an "@" are not OK to follow.
-
-    Examples:
-        is_url_ok_to_follow("http://cs.uchicago.edu/pa/pa1", "cs.uchicago.edu")
-            yields True
-
-        is_url_ok_to_follow("http://cs.cornell.edu/pa/pa1", "cs.uchicago.edu")
-            yields False
+        CSV file of the index.
     '''
+    start = time.time()
+    visit_counter = 0
+    starting_url = 'https://www.cityofchicago.org/city/en.html'
+    limiting_domain = "cityofchicago.org"
+    limiting_path = '/city/en/depts/fin/'
+    soup_part = 'container-fluid container-body'
+    url_queue = queue.Queue()
+    url_tracker = []
+    outside_domain = []
 
-    if "mailto:" in url:
-        return False
+    while visit_counter < num_pages_to_crawl:
+        
+        if visit_counter == 0:
+            current_url = starting_url
+        else:
+            current_url = url_queue.get()
 
-    if "@" in url:
-        return False
+        print(current_url)
 
-    if url[:LEN_ARCHIVES] == ARCHIVES:
-        return False
+        soup = url_to_soup(current_url)
 
-    parsed_url = urllib.parse.urlparse(url)
-    if parsed_url.scheme != "http" and parsed_url.scheme != "https":
-        return False
+        clean_and_queue_urls(soup, current_url, limiting_domain, 
+            outside_domain, url_queue, url_tracker,
+            limiting_path = limiting_path, class_ = soup_part)
 
-    if parsed_url.netloc == "":
-        return False
+        visit_counter += 1
+        url_tracker.append(current_url)
 
-    if parsed_url.fragment != "":
-        return False
+        if url_queue.qsize() == 0:
+            break
 
-    if parsed_url.query != "":
-        return False
-
-    loc = parsed_url.netloc
-    ld = len(limiting_domain)
-    trunc_loc = loc[-(ld+1):]
-    if not (limiting_domain == loc or (trunc_loc == "." + limiting_domain)):
-        return False
-
-    # does it have the right extension
-    (filename, ext) = os.path.splitext(parsed_url.path)
-    return (ext == "" or ext == ".html")
+        # time.sleep(2)
+    print(url_queue.qsize())
+    end = time.time()
+    print(end - start)
+    return url_tracker, len(url_tracker), outside_domain
 
 
 if __name__ == "__main__":
-	pass
+	go(num_pages_to_crawl)
+
+
+
+
