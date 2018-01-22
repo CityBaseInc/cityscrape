@@ -35,7 +35,7 @@ def get_request(url):
     return r
 
 
-def read_request(request):
+def read_request(request, url):
     '''
     Return data from request object.  Returns result or "" if the read
     fails..
@@ -43,9 +43,16 @@ def read_request(request):
 
     try:
         return request.text.encode('iso-8859-1')
-    except Exception:
-        print("read failed: " + request.url)
-        return ""
+    except:
+        if request == None:
+            print("***request failed: " + url)
+            return ""
+        elif request.url:
+            print("***read failed: " + request.url)
+            return ""
+        else:
+            print("***request failed: " + url)
+            return ""
 
 
 def get_request_url(request):
@@ -192,3 +199,18 @@ def is_outside_domain(url, limiting_domain, return_ = False):
             if not (limiting_domain == loc or (trunc_loc == "." + limiting_domain)):
                 return url
 
+def top_words(description_words, top_num):
+    word_dict = {}
+    for word in description_words:
+        if word not in word_dict:
+            word_dict[word] = 1
+        else:
+            word_dict[word] += 1
+
+    for word, count in word_dict.items():
+        word_counts = [(word_dict[word], word) for word in word_dict]
+
+    word_counts.sort()
+    word_counts.reverse()
+
+    return word_counts[:top_num]
