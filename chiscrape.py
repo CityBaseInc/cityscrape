@@ -26,16 +26,16 @@ class dataset(object):
     def __repr__(self):
         return self.diagnostic
 
-def url_to_soup(url):
+def request_to_soup(request, url):
     '''
-    Takes a url and returns a BeautifulSoup object.
+    Takes a request and returns a BeautifulSoup object.
 
     Input:
-        - url (string) the url for which html will be stored
+        - request (req object) the request for which html will be stored
 
     Returns: soup (bs4 object) the html soup
     '''
-    request = util.get_request(url)
+
     html = util.read_request(request, url)
     soup = bs4.BeautifulSoup(html, 'html5lib')
     return soup
@@ -122,7 +122,7 @@ def get_department(url):
         return dept
 
 
-def clean_and_queue_urls(soup, current_url, limiting_domain, 
+def clean_and_queue_urls(soup, true_url, limiting_domain, 
     outside_domain, queue, visited, limiting_path = None, 
                                                 class_ = None):
     '''
@@ -132,7 +132,7 @@ def clean_and_queue_urls(soup, current_url, limiting_domain,
 
     Inputs:
         - urls: (list of strings) list of urls from the current page.
-        - current_url: (string) url of the page currently being visited.
+        - true_url: (string) url of the page currently being visited.
         - limiting_domain: (string) domain to filter out urls not belonging
         to the same domain.
         - queue: (Queue object) queue holding urls to visit in first-in-first
@@ -152,13 +152,13 @@ def clean_and_queue_urls(soup, current_url, limiting_domain,
         if 'mailto' in url:
             email_addresses.append(url)
         if not util.is_absolute_url(url):
-            url = util.convert_if_relative_url(current_url, url)
+            url = util.convert_if_relative_url(true_url, url)
             full_urls.append(url)
         if util.is_outside_domain(url, limiting_domain, return_ = True):
-            outside_domain.append((current_url,url))
+            outside_domain.append((true_url,url))
             outside.append(url)
         if site_prefix(url, limiting_domain):
-            outside_domain.append((current_url,site_prefix(url, limiting_domain)))
+            outside_domain.append((true_url,site_prefix(url, limiting_domain)))
             outside.append(site_prefix(url, limiting_domain))
         if util.is_url_ok_to_follow(url, limiting_domain, limiting_path):
             if url not in queue.queue:
@@ -195,9 +195,10 @@ def dataset_to_dataframe(dataset, columns = None):
     for page, data in data_rows.items():
         df.loc[page] = [data[0], data[1], data[2],
                         data[3], data[4], data[5], data[6],
-                        " | ".join(data[7]), data[8],
-                        " | ".join(data[9]), len(data[10]),
-                        " | ".join(data[11])]
+                        "; ".join(data[7]), data[8],
+                        "; ".join(data[9]), data[10],
+                        "; ".join(data[11]),
+                        "; ".join(data[12])]
 
     return df
 
@@ -223,9 +224,9 @@ def go(num_pages_to_crawl):
     soup_part = 'container-fluid container-body'
     url_queue = queue.Queue()
     url_tracker = {}
-    visited = []
+    visited = set()
     outside_domain = []
-    failed_reads = []
+    dead_links = []
     description_words_all = []
     url_num_reference = {}
 
@@ -236,16 +237,28 @@ def go(num_pages_to_crawl):
         else:
             current_url = url_queue.get()
 
-        print(current_url)
 
-        soup = url_to_soup(current_url)
+        request = util.get_request(current_url)
 
         try:
-            outside, email_addresses, urls = clean_and_queue_urls(soup, current_url, limiting_domain, 
+            true_url = util.get_request_url(request)
+        except:
+            dead_links.append(current_url)
+            continue
+
+        if true_url in visited:
+            continue
+
+        print(visit_counter, "--------", true_url)
+
+        soup = request_to_soup(request, true_url)
+
+        try:
+            outside, email_addresses, urls = clean_and_queue_urls(soup, true_url, limiting_domain, 
                 outside_domain, url_queue, visited,
                 limiting_path = limiting_path, class_ = soup_part)
         except:
-            failed_reads.append(current_url)
+            failed_reads.append(true_url)
             visit_counter += 1
             continue
 
@@ -258,15 +271,16 @@ def go(num_pages_to_crawl):
         button = has_botton(soup)
         i_want_to = has_i_want_to(soup)
         nav = has_new_nav(soup)
-        dept = get_department(current_url)
+        dept = get_department(true_url)
+
 
         visit_counter += 1
-        visited.append(current_url)
-        url_tracker[visit_counter] = ((dept, page_title, current_url, 
+        visited.add(true_url)
+        url_tracker[visit_counter] = ((dept, page_title, true_url, 
                                      button, i_want_to, nav, len(email_addresses), 
                                      email_addresses, pdf_count, pdf_urls, len(outside), 
                                      outside, description_words))
-        url_num_reference[current_url] = visit_counter
+        url_num_reference[true_url] = visit_counter
 
         if url_queue.qsize() == 0:
             break
@@ -286,16 +300,18 @@ def go(num_pages_to_crawl):
     diagnostic = '''
     Pages to Crawl: {}
     Pages Visited: {}
+    Pages Scraped: {}
     Total Time: {} min, {} sec
-    Failed Reads: {}
+    Dead Links: {}
     Outside Domain URLs: {}
     Total Words: {}
     URLs in Queue: {}
     '''.format(num_pages_to_crawl,
+               len(visited),
                len(url_tracker),
                minutes,
                seconds,
-               len(failed_reads),
+               len(dead_links),
                len(outside_domain),
                len(description_words_all),
                url_queue.qsize())
@@ -304,10 +320,11 @@ def go(num_pages_to_crawl):
 
     return (url_tracker, 
             outside_domain,
-            failed_reads,
+            dead_links,
             description_words_all,
             url_num_reference,
-            diagnostic)
+            diagnostic,
+            visited)
 
 if __name__ == "__main__":
 	go(num_pages_to_crawl)
