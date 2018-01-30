@@ -42,7 +42,7 @@ def read_request(request, url):
     '''
 
     try:
-        return request.text.encode('iso-8859-1')
+        return request.text.encode('utf8')
     except:
         if request == None:
             print("***request failed: " + url)
@@ -180,8 +180,8 @@ def url_checks(url):
     if parsed_url.fragment != "":
         return False
 
-    if parsed_url.query != "":
-        return False
+    # if parsed_url.query != "":
+        # return False
 
     return True
 
