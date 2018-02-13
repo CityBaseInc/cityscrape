@@ -125,7 +125,7 @@ ARCHIVES = ("https://www.classes.cs.uchicago.edu/archive/2015/winter"
 LEN_ARCHIVES = len(ARCHIVES)
 
 
-def is_url_ok_to_follow(url, limiting_domain, limiting_path = None):
+def is_url_ok_to_follow(url, limiting_domain, limiting_path = None, ignore = None):
     '''
     Inputs:
         url: absolute URL
@@ -149,6 +149,11 @@ def is_url_ok_to_follow(url, limiting_domain, limiting_path = None):
 
         if is_outside_domain(url, limiting_domain):
             return False
+
+        if ignore:
+            for word in ignore:
+                if word in url:
+                    return False
 
         if limiting_path not in url:
             # path = parsed_url.path

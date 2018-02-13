@@ -5,23 +5,27 @@ import bs4
 import queue
 import util
 import time
+import sys
 from nltk.corpus import stopwords
 from nltk.tokenize import sent_tokenize, word_tokenize
 import re
 import pandas as pd
-
+from datetime import datetime
 
 OMIT_WORDS = ['chicago', 'city','department', 'spec', 'council', 'please']
 
 class dataset(object):
     def __init__(self, output):
-        self.visited_urls = output[0]
+        self.scraped_data = output[0]
         self.outside_domain = output[1]
-        self.failed_reads = output[2]
+        self.dead_links = output[2]
         self.description_words_all = output[3]
         self.url_num_reference = output[4]
         self.diagnostic = output[5]
-        self.num_visits = len(self.visited_urls)
+        self.num_visits = len(self.scraped_data)
+        self.unique_domains = output[7]
+        self.failed_reads = output[8]
+        self.queued_urls = output[9]
 
     def __repr__(self):
         return self.diagnostic
@@ -50,8 +54,10 @@ def get_urls(soup, class_ = None):
     Returns: urls (list of strings) all url strings on the page
     '''
     if class_:
-        soup = soup.find_all('div', 
-                    class_ = class_)[0]
+        try:
+            soup = soup.find_all('div', class_ = class_)[0]
+        except:
+            pass
 
     url_soup = soup.find_all('a')
     urls = []
@@ -64,14 +70,12 @@ def get_urls(soup, class_ = None):
     return urls
 
 def has_i_want_to(soup):
-    panels = [text.text for text in soup.find_all('div', 
-            class_ = 'panel-heading')]
-    for text in panels:
-        if "I Want To" in text:
-            return True
-            break
-        else:
-            return False
+    panels = [text.text for text in soup.find_all('h3', 
+            class_ = 'panel-title')]
+    if '\xa0I Want To' in panels:
+        return True
+    else:
+        return False
 
     
 
@@ -137,13 +141,14 @@ def clean_and_queue_urls(soup, true_url, limiting_domain,
         to the same domain.
         - queue: (Queue object) queue holding urls to visit in first-in-first
         out order.
-        - url_tracker: (list of strings) list of urls that have been visited.
+        - scraped_data: (dict of lists) list of urls that have been visited.
 
     Returns: None - the function will add to the any url not visited before.
     '''
     urls = get_urls(soup, class_)
     outside = []
     full_urls = []
+    ignore = ['press_room', 'data.', 'test311','311api.c', '311request.', 'news','node', 'PhoneBook', 'https://www.cityofchicago.org/city/en/depts/mopd/auto_generated.html']
     email_addresses = []
     for url in urls:
         url = util.remove_fragment(url)
@@ -155,12 +160,13 @@ def clean_and_queue_urls(soup, true_url, limiting_domain,
             url = util.convert_if_relative_url(true_url, url)
             full_urls.append(url)
         if util.is_outside_domain(url, limiting_domain, return_ = True):
-            outside_domain.append((true_url,url))
+            outside_domain.append(url)
             outside.append(url)
         if site_prefix(url, limiting_domain):
-            outside_domain.append((true_url,site_prefix(url, limiting_domain)))
-            outside.append(site_prefix(url, limiting_domain))
-        if util.is_url_ok_to_follow(url, limiting_domain, limiting_path):
+            if 'mailto' not in url:
+                    outside_domain.append(url)
+                    outside.append(url)
+        if util.is_url_ok_to_follow(url, limiting_domain, limiting_path, ignore):
             if url not in queue.queue:
                 if url not in visited:
                     queue.put(url)
@@ -185,25 +191,73 @@ def has_botton(soup):
     else:
         return False
 
+def create_word_index(dataset):
+    return None
+
+def unique_url_domains(outside):
+    unique_domains = set() 
+    for url in outside:
+        parsed_url = urllib.parse.urlparse(url)
+        netloc = parsed_url.netloc
+        if 'www' in netloc:
+            netloc = netloc[4:]
+        unique_domains.add(netloc)
+    return unique_domains
+
 
 def dataset_to_dataframe(dataset, columns = None):
     columns = ['dept', 'title', 'url', 'button', 'i_want_to',
            'nav', 'num_email_addresses', 'email_addresses',
-           'pdf_count', 'pdf_urls', 'ext_link_count','ext_links', 'description_words']
-    data_rows = dataset.visited_urls
+           'pdf_count', 'pdf_urls', 'ext_link_count', 'ext_links', 
+           'outside_domain', 'description_words']
+    data_rows = dataset.scraped_data
     df = pd.DataFrame(columns = columns)
     for page, data in data_rows.items():
         df.loc[page] = [data[0], data[1], data[2],
                         data[3], data[4], data[5], data[6],
                         "; ".join(data[7]), data[8],
                         "; ".join(data[9]), data[10],
-                        "; ".join(data[11]),
-                        "; ".join(data[12])]
+                        "; ".join(data[11]), "; ".join(data[12]),
+                        "; ".join(data[13])]
 
     return df
 
+def convert_seconds_to_min_sec(total_seconds, output = False):
+    total = total_seconds
 
-def go(num_pages_to_crawl):
+    minutes = int(total // 60)
+
+    if minutes == 0:
+        seconds = int(total)
+    else:
+    
+        seconds = int(total % (minutes*60))
+
+    if output:
+        return minutes, seconds
+
+    return str(minutes) + " min, " + str(seconds) + " sec"
+
+def load_queued(filename, queue, visited, ignore=None):
+    queue_df = pd.read_csv(filename)
+    queued_urls = list(queue_df['0'])
+    if ignore:
+        for url in queued_urls:
+            if ignore not in url and url not in visited:
+                queue.put(url)
+    else:
+        for url in queued_urls and url not in visited:
+            if url not in visited:
+                queue.put(url)
+
+def load_visited(filename, visited):
+    visited_df = pd.read_csv(filename, encoding='iso-8859-1', index_col = 0)
+    visited_urls = list(visited_df.url)
+    for url in visited_urls:
+        visited.add(url)
+
+
+def go(num_pages_to_crawl, already_visited_file = None, queue_up_file = None):
     '''
     Crawl the college catalog and generates a CSV file with an index.
 
@@ -216,86 +270,102 @@ def go(num_pages_to_crawl):
     Outputs:
         CSV file of the index.
     '''
+    ignore = ['press_room', 'data.', 'test311','311api.c', '311request.', 'news','node', 'PhoneBook', 'https://www.cityofchicago.org/city/en/depts/mopd/auto_generated.html']
     start = time.time()
     visit_counter = 0
     starting_url = 'https://www.cityofchicago.org/city/en.html'
     limiting_domain = "cityofchicago.org"
-    limiting_path =  'svcs' #'/city/en/depts/fin/'
+    limiting_path =  ""#'svcs' #'/city/en/depts/fin/'
     soup_part = 'container-fluid container-body'
-    url_queue = queue.Queue()
-    url_tracker = {}
     visited = set()
+    if already_visited_file:
+        load_visited(already_visited_file, visited)
+    url_queue = queue.Queue()
+    if queue_up_file:
+        load_queued(queue_up_file, url_queue, visited, 'PhoneBook')
+    scraped_data = {}
     outside_domain = []
+    failed_reads = []
     dead_links = []
     description_words_all = []
     url_num_reference = {}
 
     while visit_counter < num_pages_to_crawl:
         
-        if visit_counter == 0:
-            current_url = starting_url
-        else:
-            current_url = url_queue.get()
-
-
-        request = util.get_request(current_url)
-
         try:
-            true_url = util.get_request_url(request)
-        except:
-            dead_links.append(current_url)
-            continue
+            if visit_counter != 0 and url_queue.qsize() == 0:
+                break
 
-        if true_url in visited:
-            continue
+            if visit_counter == 0 and not queue_up_file:
+                current_url = starting_url
+            else:
+                current_url = url_queue.get()
+            
 
-        print(visit_counter, "--------", true_url)
+            request = util.get_request(current_url)
 
-        soup = request_to_soup(request, true_url)
+            try:
+                true_url = util.get_request_url(request)
+            except:
+                dead_links.append((visit_counter, current_url))
+                continue
 
-        try:
-            outside, email_addresses, urls = clean_and_queue_urls(soup, true_url, limiting_domain, 
-                outside_domain, url_queue, visited,
-                limiting_path = limiting_path, class_ = soup_part)
+            if true_url in visited:
+                print(current_url)
+                print('VISITED!')
+                continue
+
+            time_elapsed = round(time.time() - start,2)
+            est_time_elapsed = convert_seconds_to_min_sec(time_elapsed)
+            time_remaining = (time_elapsed/(visit_counter+1)) * (num_pages_to_crawl - visit_counter)
+            est_time_remaining = convert_seconds_to_min_sec(time_remaining)
+            print(visit_counter, "--- Time Elapsed: ", est_time_elapsed , "---- Est. Time Remaining: ", est_time_remaining, '---Q Size: ', url_queue.qsize(), '\n', "-", true_url)
+
+
+
+            soup = request_to_soup(request, true_url)
+
+            try:
+                outside, email_addresses, urls = clean_and_queue_urls(soup, true_url, limiting_domain, 
+                    outside_domain, url_queue, visited,
+                    limiting_path = limiting_path, class_ = soup_part)
+            except:
+                failed_reads.append(true_url)
+                continue
+
+            pdf_urls, pdf_count = count_pdfs(urls)
+            page_title = soup.title.text
+            description_words = scrape_description_text(soup)
+            if type(description_words) != str:
+                description_words_all += description_words
+
+            button = has_botton(soup)
+            i_want_to = has_i_want_to(soup)
+            nav = has_new_nav(soup)
+            dept = get_department(true_url)
+            unique_domains = unique_url_domains(outside)
+
+
+            visit_counter += 1
+            visited.add(true_url)
+            scraped_data[visit_counter] = ((dept, page_title, true_url, 
+                                         button, i_want_to, nav, len(email_addresses), 
+                                         email_addresses, pdf_count, pdf_urls, len(outside), 
+                                         outside, unique_domains, description_words))
+            url_num_reference[true_url] = visit_counter
+        
         except:
             failed_reads.append(true_url)
-            visit_counter += 1
-            continue
-
-        pdf_urls, pdf_count = count_pdfs(urls)
-        page_title = soup.title.text[24:-1]
-        description_words = scrape_description_text(soup)
-        if type(description_words) != str:
-            description_words_all += description_words
-
-        button = has_botton(soup)
-        i_want_to = has_i_want_to(soup)
-        nav = has_new_nav(soup)
-        dept = get_department(true_url)
 
 
-        visit_counter += 1
-        visited.add(true_url)
-        url_tracker[visit_counter] = ((dept, page_title, true_url, 
-                                     button, i_want_to, nav, len(email_addresses), 
-                                     email_addresses, pdf_count, pdf_urls, len(outside), 
-                                     outside, description_words))
-        url_num_reference[true_url] = visit_counter
-
-        if url_queue.qsize() == 0:
-            break
-
-        # time.sleep(2)
+        #time.sleep(1)
     end = time.time()
 
     total_seconds = end - start
 
-    minutes = int(total_seconds // 60)
+    minutes, seconds = convert_seconds_to_min_sec(total_seconds, True)
 
-    if minutes == 0:
-        seconds = int(total_seconds)
-    else:
-        seconds = int(total_seconds % minutes)
+    unique_domains_all = unique_url_domains(outside_domain)
 
     diagnostic = '''
     Pages to Crawl: {}
@@ -308,7 +378,7 @@ def go(num_pages_to_crawl):
     URLs in Queue: {}
     '''.format(num_pages_to_crawl,
                len(visited),
-               len(url_tracker),
+               len(scraped_data),
                minutes,
                seconds,
                len(dead_links),
@@ -318,16 +388,42 @@ def go(num_pages_to_crawl):
 
     print(diagnostic)
 
-    return (url_tracker, 
+    return (scraped_data, 
             outside_domain,
             dead_links,
             description_words_all,
             url_num_reference,
             diagnostic,
-            visited)
+            visited,
+            unique_domains_all,
+            failed_reads,
+            list(url_queue.queue))
+
+def start(num_pages_to_crawl, already_visited_file = None, queue_up_file = None, filename = 'data_output_'):
+    output = go(num_pages_to_crawl, already_visited_file, queue_up_file)
+    data = dataset(output)
+    dead_links = data.dead_links
+    df_dead_links = pd.DataFrame(dead_links)
+    df = dataset_to_dataframe(data)
+    current_time_list = []
+    current_time_list.append(str(datetime.now().month))
+    current_time_list.append(str(datetime.now().day))
+    current_time_list.append(str(datetime.now().hour))
+    current_time_list.append(str(datetime.now().minute))
+    current_time = '_'.join(current_time_list)
+    df.to_csv(filename + current_time + '.csv')
+    df_dead_links.to_csv('dead_links_' + current_time + '.csv')
+    queued = pd.DataFrame(data.queued_urls)
+    queued.to_csv('queued_' + current_time + '.csv')
+    return data
+
 
 if __name__ == "__main__":
-	go(num_pages_to_crawl)
+    if sys.argv[2] and sys.argv[3]:
+        start(int(sys.arg[1], str(sys.argv[2]), str(sys.argv[3])))
+    else:
+        start(int(sys.argv[1]))
+
 
 #url_tracker, outside_domain, failed_reads, description_words_all, url_num_reference, diagnostic = chiscrape.go(200)
 
