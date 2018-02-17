@@ -118,12 +118,21 @@ def site_prefix(url, limiting_domain):
         return url
 
 def get_department(url):
-    parsed_url = urllib.parse.urlparse(url)
-    path = parsed_url.path
-    if path and 'depts' in path:
-        path = path[23:]
-        dept = path.split('/')[0]
-        return dept
+    try:
+        m = re.search('depts/(.+?)/', url).group(1)
+    except:
+        try:
+            m = re.search('depts/(.+?)\.', url).group(1)
+        except:
+            return 'None'
+
+    return m
+    # parsed_url = urllib.parse.urlparse(url)
+    # path = parsed_url.path
+    # if path and 'depts' in path:
+    #     path = path[23:]
+    #     dept = path.split('/')[0]
+    #     return dept
 
 
 def clean_and_queue_urls(soup, true_url, limiting_domain, 
@@ -334,7 +343,7 @@ def go(num_pages_to_crawl, already_visited_file = None, queue_up_file = None):
                 continue
 
             pdf_urls, pdf_count = count_pdfs(urls)
-            page_title = soup.title.text
+            page_title = soup.title.text.strip()
             description_words = scrape_description_text(soup)
             if type(description_words) != str:
                 description_words_all += description_words
