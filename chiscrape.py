@@ -3,7 +3,7 @@ import requests
 import os
 import bs4
 import queue
-import util
+from util import *
 import time
 import sys
 from nltk.corpus import stopwords
@@ -117,7 +117,6 @@ def scrape_description_text(soup):
 
 def site_prefix(url, limiting_domain):
     '''
-    
     '''
     parsed_url = urllib.parse.urlparse(url)
     loc = parsed_url.netloc
@@ -211,8 +210,6 @@ def has_botton(soup):
     else:
         return False
 
-def create_word_index(dataset):
-    return None
 
 def unique_url_domains(outside):
     unique_domains = set() 
@@ -242,18 +239,25 @@ def dataset_to_dataframe(dataset, columns = None):
 
     return df
 
-def convert_seconds_to_min_sec(total_seconds, output = False):
+def convert_seconds_to_min_sec(total_seconds, text_output = False):
+    '''
+    Takes seconds and converts to _ min, _ sec format. 
+    Inputs:
+        - total_seconds (float): number of seconds
+        - text_output (boolean): Default, False. 
+    Output:
+        - If text_output is False, function returns minutes and 
+        seconds in integer form. If True, function returns in a
+        string in "_ min, _ sec" format.
+    '''
     total = total_seconds
-
     minutes = int(total // 60)
 
     if minutes == 0:
         seconds = int(total)
     else:
-    
         seconds = int(total % (minutes*60))
-
-    if output:
+    if text_output:
         return minutes, seconds
 
     return str(minutes) + " min, " + str(seconds) + " sec"
@@ -315,15 +319,11 @@ def go(num_pages_to_crawl, already_visited_file = None, queue_up_file = None):
         try:
             if visit_counter != 0 and url_queue.qsize() == 0:
                 break
-
             if visit_counter == 0 and not queue_up_file:
                 current_url = starting_url
             else:
                 current_url = url_queue.get()
-            
-
             request = util.get_request(current_url)
-
             try:
                 true_url = util.get_request_url(request)
             except:
@@ -340,9 +340,7 @@ def go(num_pages_to_crawl, already_visited_file = None, queue_up_file = None):
             time_remaining = (time_elapsed/(visit_counter+1)) * (num_pages_to_crawl - visit_counter)
             est_time_remaining = convert_seconds_to_min_sec(time_remaining)
             print(visit_counter, "--- Time Elapsed: ", est_time_elapsed , "---- Est. Time Remaining: ", est_time_remaining, '---Q Size: ', url_queue.qsize(), '\n', "-", true_url)
-
-
-
+            
             soup = request_to_soup(request, true_url)
 
             try:
@@ -365,7 +363,6 @@ def go(num_pages_to_crawl, already_visited_file = None, queue_up_file = None):
             dept = get_department(true_url)
             unique_domains = unique_url_domains(outside)
 
-
             visit_counter += 1
             visited.add(true_url)
             scraped_data[visit_counter] = ((dept, page_title, true_url, 
@@ -380,9 +377,7 @@ def go(num_pages_to_crawl, already_visited_file = None, queue_up_file = None):
 
         #time.sleep(1)
     end = time.time()
-
     total_seconds = end - start
-
     minutes, seconds = convert_seconds_to_min_sec(total_seconds, True)
 
     unique_domains_all = unique_url_domains(outside_domain)
@@ -425,16 +420,10 @@ def start(num_pages_to_crawl, already_visited_file = None, queue_up_file = None,
     dead_links = data.dead_links
     df_dead_links = pd.DataFrame(dead_links)
     df = dataset_to_dataframe(data)
-    current_time_list = []
-    current_time_list.append(str(datetime.now().month))
-    current_time_list.append(str(datetime.now().day))
-    current_time_list.append(str(datetime.now().hour))
-    current_time_list.append(str(datetime.now().minute))
-    current_time = '_'.join(current_time_list)
-    df.to_csv(filename + current_time + '.csv')
-    df_dead_links.to_csv('dead_links_' + current_time + '.csv')
+    df.to_csv(filename + current_time_str() + '.csv')
+    df_dead_links.to_csv('dead_links_' + current_time() + '.csv')
     queued = pd.DataFrame(data.queued_urls)
-    queued.to_csv('queued_' + current_time + '.csv')
+    queued.to_csv('queued_' + current_time() + '.csv')
     return data
 
 
@@ -443,6 +432,15 @@ if __name__ == "__main__":
         start(int(sys.arg[1], str(sys.argv[2]), str(sys.argv[3])))
     else:
         start(int(sys.argv[1]))
+
+def current_time_str():
+    current_time_list = []
+    current_time_list.append(str(datetime.now().month))
+    current_time_list.append(str(datetime.now().day))
+    current_time_list.append(str(datetime.now().hour))
+    current_time_list.append(str(datetime.now().minute))
+    current_time = '_'.join(current_time_list)
+    return current_time
 
 
 #url_tracker, outside_domain, failed_reads, description_words_all, url_num_reference, diagnostic = chiscrape.go(200)
