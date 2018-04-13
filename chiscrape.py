@@ -87,6 +87,14 @@ def has_new_nav(soup):
 
 
 def scrape_description_text(soup):
+    '''
+    Scrapes text from body of a City of Chicago web page, tokenizes, filters
+    out characters that are not words stopwords. Returns all words in a list.
+    Inputs:
+        - soup (bs4 Object): soup from a web html page
+    Outputs:
+        - cleaned_words (list of strings): list of all tokenized words
+    '''
     if soup.find('div', 'container-fluid page-full-description'):
         text = soup.find('div', 'container-fluid page-full-description').text
     elif soup.find('div', 'container-fluid page-full-description-above'):
@@ -108,31 +116,34 @@ def scrape_description_text(soup):
         return ['No text found']
 
 def site_prefix(url, limiting_domain):
+    '''
+    
+    '''
     parsed_url = urllib.parse.urlparse(url)
     loc = parsed_url.netloc
     loc_len = len(loc) - 4
     lim_len = len(limiting_domain)
     if (limiting_domain in loc) and (loc_len != lim_len):
-        # domain_prefix = loc[:-lim_len]
 
         return url
 
 def get_department(url):
+    ''' 
+    Function to get the department name from the City of Chicago url.
+    Inputs:
+        - url (string): 
+    Outputs:
+        - dept (string): department abbreviation from URL
+    '''
     try:
-        m = re.search('depts/(.+?)/', url).group(1)
+        dept = re.search('depts/(.+?)/', url).group(1)
     except:
         try:
-            m = re.search('depts/(.+?)\.', url).group(1)
+            dept = re.search('depts/(.+?)\.', url).group(1)
         except:
             return 'None'
 
-    return m
-    # parsed_url = urllib.parse.urlparse(url)
-    # path = parsed_url.path
-    # if path and 'depts' in path:
-    #     path = path[23:]
-    #     dept = path.split('/')[0]
-    #     return dept
+    return dept
 
 
 def clean_and_queue_urls(soup, true_url, limiting_domain, 
