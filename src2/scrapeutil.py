@@ -99,7 +99,7 @@ def count_pdfs(urls):
 
 
 
-def clean_and_queue_urls(soup, from_page, true_url, limiting_domain,
+def clean_and_queue_urls(soup, page_id, true_url, limiting_domain,
                         queue_set, queue, visited, writer_g, ignore, limiting_path = None, class_ = None):
     '''
     Takes a list of urls from the current page being visited and adds
@@ -130,13 +130,13 @@ def clean_and_queue_urls(soup, from_page, true_url, limiting_domain,
             continue
         if not is_absolute_url(url):
             url = convert_if_relative_url(true_url, url)
-        writer_g.writerow([from_page, url])
+        writer_g.writerow([page_id, url])
         if is_url_ok_to_follow(url, limiting_domain, limiting_path, ignore):
             url_n = "//".join(true_url.split('//')[1:])
             if url not in queue_set:
                 if url_n not in visited:
                     print("PUTTING IN:",url)
-                    queue.put((from_page, url))
+                    queue.put((page_id, url))
                     queue_set.add(url)
 
 def site_prefix(url, limiting_domain):
@@ -340,7 +340,7 @@ def convert_if_relative_url(current_url, new_url):
     if ext in [".edu", ".org", ".com", ".net"]:
         return "http://" + new_url
     elif new_url[:3] == "www":
-        return "http://" + new_path
+        return "http://" + new_url
     else:
         return urllib.parse.urljoin(current_url, new_url)
 

@@ -88,26 +88,26 @@ class WebScrape(object):
                     soup = request_to_soup(request)
 
                     try:
-                        clean_and_queue_urls(soup, from_page, true_url, limiting_domain,queue_set, url_queue, visited ,writer_g, ignore,
+                        clean_and_queue_urls(soup, page_id, true_url, limiting_domain,queue_set, url_queue, visited ,writer_g, ignore,
                             limiting_path = limiting_path, class_ = soup_part)
                     except Exception as e:
                         print (e)
-                        writer_j.writerow([from_page, true_url, e])
+                        writer_j.writerow([page_id, true_url, e])
                         traceback.print_exc()
                         continue
 
                     page_title = soup.title.text.strip()
                     text = scrape_text(soup)
-                    page_id += 1
                     visited.add("//".join(true_url.split('//')[1:]))
                     visited.add("//".join(current_url.split('//')[1:]))
                     writer_f.writerow([page_id, page_title, current_url,
                                        true_url, text])
+                    page_id += 1
                     # time.sleep()
 
                 except Exception as e:
                     print('FAILED:', e)
-                    writer_j.writerow([from_page, true_url, e])
+                    writer_j.writerow([page_id, true_url, e])
             total_seconds = time.time() - start
             minutes, seconds = convert_seconds_to_min_sec(total_seconds, True)
             diagnostic = '''
