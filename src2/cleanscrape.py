@@ -19,7 +19,7 @@ OMIT_WORDS = ['chicago', 'city','department', 'spec', 'council', 'please']
 class WebScrape(object):
     def __init__(self, starting_url, limiting_domain = '', limiting_path = '',
                  urls_from_class = '', text_from_class = ''):
-        self.starting_url = starting_url
+        self.starting_url = check_starting_url(starting_url)
         self.limiting_domain = limiting_domain
         self.limiting_path = limiting_path
         self.scraped_data = None
