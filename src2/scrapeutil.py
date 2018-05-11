@@ -171,6 +171,12 @@ def tokenize_words(text):
 
     return cleaned_words
 
+def check_starting_url(url):
+    req = get_request(url)
+    if req:
+        return url
+    else:
+        print("That's not a proper URL. Please use another one.")
 
 def get_urls(soup, limit_to_section = None):
     '''
