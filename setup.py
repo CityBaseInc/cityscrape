@@ -12,5 +12,6 @@ setup(name='cityscrape',
       url='ssh://github.com/CityBaseInc/cityscrape',
       maintainer_email='vanguiano@thecitybase.com',
       packages=['cityscrape'],
+      install_requires=[],
       long_description=open('README.md').read() if exists('README.md') else ''
       )
