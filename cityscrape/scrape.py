@@ -121,7 +121,8 @@ class WebScrape(object):
                 print(e)
                 print("FAILED")
             page_counter += 1
-            print(curr_url, self.tovisit_q.qsize())
+            print(page_counter, curr_url, self.tovisit_q.qsize())
+            print("NUM_PDFS:", self.pdflink_q.qsize())
 
 
 
