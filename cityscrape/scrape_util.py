@@ -74,6 +74,7 @@ def clean_and_queue_urls(soup,
                          pdflink_q,
                          visited_qs,
                          tovisit_qs,
+                         pdflink_qs,
                          ignore,
                          lmt_doma: str = '',
                          lmt_path: str = '',
@@ -106,7 +107,9 @@ def clean_and_queue_urls(soup,
         url = convert_if_relative_url(true_url, url)
 
         if '.pdf' in url:
-            pdflink_q.put(url)
+            if not check_ifin_queue(pdflink_qs, url):
+                pdflink_q.put((true_url, url))
+                add_to_queue_set(pdflink_qs, url)
 
         if (is_url_ok_to_follow(url,
                                lmt_doma,

@@ -31,8 +31,11 @@ class WebScrape(object):
           visited
         - tovisit_qs: mp.Queue() obect to track the URLs that are in the queue
           and already will be visited
+        - pdflink_qs: mp.Queue() object to store set of pdf links that have been
+          or will be scraped
         - lmt_doma (str): domain to restrict the scrape to
         - lmt_path (str): used to limit the scrape to URLs with string in path
+        - kill_switch (Value): used to as a kill switch for pdf_scrapers
         - mqueue: TO BE DELETED
     '''
     def __init__(self,
@@ -43,8 +46,10 @@ class WebScrape(object):
                  pdflink_q,
                  visited_qs,
                  tovisit_qs,
+                 pdflink_qs,
                  lmt_doma: str = '',
                  lmt_path: str = '',
+                 kill_switch = None,
                  mqueue = None):
 
         self.start_url = start_url
@@ -56,6 +61,8 @@ class WebScrape(object):
         self.pdflink_q = pdflink_q
         self.visited_qs = visited_qs
         self.tovisit_qs = tovisit_qs
+        self.pdflink_qs = pdflink_qs
+        self.kill_switch = kill_switch
         self.class_ = None # DELETE
 
     def scrape(self,
@@ -113,6 +120,7 @@ class WebScrape(object):
                                         self.pdflink_q,
                                         self.visited_qs,
                                         self.tovisit_qs,
+                                        self.pdflink_qs,
                                         ignore,
                                         self.lmt_doma,
                                         self.lmt_path,
@@ -123,7 +131,6 @@ class WebScrape(object):
             page_counter += 1
             print(page_counter, curr_url, self.tovisit_q.qsize())
             print("NUM_PDFS:", self.pdflink_q.qsize())
-
 
 
         while not self.tovisit_q.empty():
@@ -149,10 +156,11 @@ class WebScrape(object):
 
         self.tovisit_q.close()
         self.writeto_q.close()
-        self.pdflink_q.close()
         self.visited_qs.close()
         self.tovisit_qs.close()
         self.faildrd_q.close()
+
+        self.kill_switch.value = 1
 
 
 
